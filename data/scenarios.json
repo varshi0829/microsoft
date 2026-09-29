@@ -1,0 +1,8 @@
+{
+ "INC-201": {"label":"Incident A","service":"checkout-api","environment":"production","severity":"SEV-1","root_cause":"R1_POOL_LEAK_AFTER_DEPLOY","alert":"checkout-api latency and error rate rising, database CPU high",
+   "latency_ms":4200,"error_rate":18.0,"db_cpu":91,"rps_vs_baseline":85,"conn_used":50,"pool_max":50,"deploy":{"id":"v2.8.4","minutes_ago":28}},
+ "INC-202": {"label":"Incident A' (recurrence)","service":"checkout-api","environment":"production","severity":"SEV-1","root_cause":"R1_POOL_LEAK_AFTER_DEPLOY","alert":"checkout-api latency and error rate rising again, database CPU high",
+   "latency_ms":3900,"error_rate":15.0,"db_cpu":89,"rps_vs_baseline":80,"conn_used":50,"pool_max":50,"deploy":{"id":"v2.8.5","minutes_ago":41}},
+ "INC-203": {"label":"Incident B (distractor)","service":"checkout-api","environment":"production","severity":"SEV-2","root_cause":"R3_SLOW_QUERY","alert":"checkout-api latency high, database CPU very high",
+   "latency_ms":3600,"error_rate":9.0,"db_cpu":96,"rps_vs_baseline":5,"conn_used":14,"pool_max":50,"deploy":{"id":"v2.9.0","minutes_ago":20}}
+}

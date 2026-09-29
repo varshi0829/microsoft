@@ -1,0 +1,79 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RecallOps</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1c2330;--mut:#667085;--bd:#e3e6ec;--ok:#0a7d3c;--okbg:#e6f6ec;--bad:#b42318;--badbg:#fdeceb;--warn:#a15c00;--warnbg:#fff4e0;--acc:#2f5bea}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1a1e26;--fg:#e8ebf0;--mut:#98a2b3;--bd:#2b313c;--ok:#4cc27f;--okbg:#12301f;--bad:#ff8a80;--badbg:#3a1a18;--warn:#f0b354;--warnbg:#3a2a10;--acc:#8aa4ff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 8px}h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin:10px 0}.card.hidden{display:none}
+button{font:inherit;padding:7px 12px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer}button.p{background:var(--acc);color:#fff;border-color:var(--acc)}button:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}.kv div{background:var(--bg);border-radius:6px;padding:6px 8px}.kv b{display:block;font-size:11px;color:var(--mut);font-weight:600}
+.chip{display:inline-block;border-radius:10px;padding:1px 8px;font-size:12px;font-weight:600}.SUCCESS{background:var(--okbg);color:var(--ok)}.FAILED{background:var(--badbg);color:var(--bad)}.PARTIAL{background:var(--warnbg);color:var(--warn)}.ESCALATED{background:var(--warnbg);color:var(--warn)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:640px){.cols{grid-template-columns:1fr}}
+.col{border-radius:6px;padding:8px}.col.w{background:var(--okbg)}.col.f{background:var(--badbg)}.col h3{margin:0 0 4px;font-size:13px}.col div{font-size:13px;margin:2px 0}
+.banner{border-radius:6px;padding:6px 10px;margin:6px 0;font-weight:600}.dev{background:var(--badbg);color:var(--bad)}.sim{background:var(--warnbg);color:var(--warn)}.learn{background:var(--okbg);color:var(--ok)}
+.act{font-size:18px;font-weight:700}.mut{color:var(--mut)}code{background:var(--bg);padding:1px 5px;border-radius:4px}ul{margin:4px 0;padding-left:18px}
+</style></head><body><main>
+<h1>RecallOps <span class="mut" style="font-weight:400">— outcome-aware incident memory</span></h1>
+<div id="banners"></div>
+<div class="card"><h2>Demo flow</h2><div class="row" id="scen"></div>
+ <div class="row" style="margin-top:8px"><button id="hero">▶ Hero story shortcut (auto-approves: A → A′)</button><span class="mut">Normal use: pick an incident, Analyze, then approve manually.</span></div></div>
+<div class="card hidden" id="A"><h2>A · Current incident</h2><div id="Ab"></div></div>
+<div class="card hidden" id="B"><h2>B · Investigation evidence (observed)</h2><div id="Bb"></div></div>
+<div class="card hidden" id="C"><h2>C · Recalled memory (historical evidence)</h2><div id="Cb"></div></div>
+<div class="card hidden" id="D"><h2>D · Agent diagnosis (hypothesis)</h2><div id="Db"></div></div>
+<div class="card hidden" id="E"><h2>E · Recommended action</h2><div id="Eb"></div></div>
+<div class="card hidden" id="F"><h2>F · Human approval</h2><div class="row"><button class="p" id="approve">Approve &amp; run (simulated)</button><button id="reject">Reject</button></div><div class="mut" id="Fnote"></div></div>
+<div class="card hidden" id="G"><h2>G · Simulated outcome</h2><div id="Gb"></div></div>
+<div class="card hidden" id="H"><h2>H · Memory updated</h2><div id="Hb"></div></div>
+</main><script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.detail||r.status);return j});
+const chip=r=>`<span class="chip ${r}">${r}</span>`;
+let cur=null,rec=null,info=null;
+function banners(){const s=info.memory_status||{state:'unverified',detail:''};
+ let b=`<div class="banner sim">SIMULATION — no real infrastructure is touched. Actions are allowlisted and require human approval.</div>`;
+ if(info.memory_backend!=='hindsight')b+=`<div class="banner dev">⚠ DEV FALLBACK — NOT HINDSIGHT. Memory here is a development keyword store.</div>`;
+ else{const cls={verified:'learn',partial:'sim',unverified:'sim',unavailable:'dev'}[s.state]||'sim';
+  const txt={verified:'Hindsight: VERIFIED',partial:'Hindsight: PARTIALLY VERIFIED',unverified:'Hindsight: CONFIGURED, UNVERIFIED',unavailable:'Hindsight: UNAVAILABLE'}[s.state]||'Hindsight: UNVERIFIED';
+  b+=`<div class="banner ${cls}">${esc(txt)} — ${esc(s.detail)}</div>`;}
+ if(info.reasoner!=='llm')b+=`<div class="banner dev">⚠ Reasoner: ${esc(info.reasoner)} — deterministic stub, NOT an LLM.</div>`;
+ $('banners').innerHTML=b;}
+async function refreshInfo(){info=await (await fetch('/api/info')).json();banners();}
+async function init(){await refreshInfo();
+ $('scen').innerHTML=Object.entries(info.scenarios).map(([k,v])=>`<button data-i="${k}">${esc(v.label)} · ${k}</button>`).join('');
+ document.querySelectorAll('#scen button').forEach(x=>x.onclick=()=>load(x.dataset.i));}
+function hide(){['A','B','C','D','E','F','G','H'].forEach(i=>$(i).classList.add('hidden'))}
+async function load(i){cur=i;rec=null;hide();await post('/api/start',{incident_id:i});await analyze();}
+async function analyze(){
+ $('Fnote').textContent='Analyzing…';const o=await post('/api/analyze',{incident_id:cur});rec=o.recommendation;render(o);refreshInfo();}
+function render(o){const p=o.incident,v=o.investigation,m=o.memory,r=o.recommendation;
+ $('A').classList.remove('hidden');$('Ab').innerHTML=`<div><b>${esc(p.id)}</b> · ${esc(p.service)} · ${esc(p.severity)} · <span class="chip ${p.status==='ACTIVE'?'FAILED':'SUCCESS'}">${esc(p.status)}</span></div><div class="mut">${esc(p.alert)}</div>${p.actions_taken.length?'<div>This incident so far: '+p.actions_taken.map(a=>esc(a.action)+' '+chip(a.result)).join(' → ')+'</div>':''}`;
+ const c=v.connections,d=v.recent_deploy;$('B').classList.remove('hidden');$('Bb').innerHTML=`<div class="kv"><div><b>latency</b>${v.latency_ms} ms</div><div><b>error rate</b>${v.error_rate}%</div><div><b>db cpu</b>${v.db_cpu}%</div><div><b>connections</b>${c.used}/${c.pool_max}</div><div><b>traffic vs baseline</b>+${v.rps_vs_baseline}%</div><div><b>recent deploy</b>${d?esc(d.id)+' · '+d.minutes_ago+' min ago':'none'}</div></div><div class="mut" style="margin-top:4px">tools: get_recent_deploy · get_metric · get_connection_count</div>`;
+ $('C').classList.remove('hidden');
+ const row=x=>`<div>${chip(x.result)} <b>${esc(x.action)}</b> — ${esc(x.incident)} (${esc(x.service)}${x.same_service?' · same service':''})</div>`;
+ let h='';if(m.warning)h+=`<div class="banner dev">${esc(m.warning)}</div>`;
+ if(m.backend!=='hindsight')h+=`<div class="banner dev">DEV FALLBACK — NOT HINDSIGHT (recall below is a development keyword store)</div>`;
+ if(m.just_learned.length)h+=`<div class="banner learn">★ Learned earlier in this run: ${m.just_learned.map(j=>esc(j.id)+' ('+j.actions.map(a=>esc(a.action)+' '+a.result).join(' → ')+')').join('; ')}</div>`;
+ h+=`<div><b>Evidence strength</b><ul>${m.strength.map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`;
+ h+=`<div class="cols"><div class="col w"><h3>✓ Worked before</h3>${m.worked_before.map(row).join('')||'<div class="mut">none</div>'}</div><div class="col f"><h3>✗ Failed / only partly worked before</h3>${m.failed_before.map(row).join('')||'<div class="mut">none</div>'}</div></div>`;
+ if(!m.records.length)h+=`<div class="banner sim">No relevant historical incident found — recommendation is based on current evidence only.</div>`;
+ $('Cb').innerHTML=h;
+ $('D').classList.remove('hidden');$('Db').innerHTML=`<div>${esc(r.diagnosis)}</div><div class="mut" style="margin-top:4px">Reasoning: ${esc(r.reasoning)}</div><div class="mut">Reasoner: ${esc(r.reasoner)}</div>${r.evidence.length?'<b>Evidence</b><ul>'+r.evidence.map(e=>`<li>${esc(e)}</li>`).join('')+'</ul>':''}${r.historical_lessons.length?'<b>Historical lessons</b><ul>'+r.historical_lessons.map(e=>`<li>${esc(e)}</li>`).join('')+'</ul>':''}`;
+ $('E').classList.remove('hidden');$('Eb').innerHTML=`<div class="act">${esc(r.recommended_action)}</div>${r.actions_to_avoid.length?'<div style="margin-top:6px"><b>Avoid</b><ul>'+r.actions_to_avoid.map(a=>`<li><span class="chip FAILED">avoid</span> <b>${esc(a.action)}</b> — ${esc(a.why)}</li>`).join('')+'</ul></div>':''}`;
+ $('F').classList.remove('hidden');$('approve').disabled=false;$('reject').disabled=false;$('approve').textContent=r.recommended_action==='ESCALATE'?'Approve escalation':'Approve & run '+r.recommended_action+' (simulated)';$('Fnote').textContent='Nothing runs until you approve.';
+ $('G').classList.add('hidden');$('H').classList.add('hidden');}
+async function decide(dec){$('approve').disabled=true;$('reject').disabled=true;
+ const o=await post('/api/decide',{incident_id:cur,decision:dec,action:rec.recommended_action});
+ if(dec==='reject'){$('Fnote').textContent='Rejected. Nothing was executed.';return o}
+ refreshInfo();const t=o.outcome;$('G').classList.remove('hidden');
+ $('Gb').innerHTML=`<div><b>${esc(t.action)}</b> ${chip(t.result)}</div><div>${esc(t.message)}</div><div class="kv" style="margin-top:6px"><div><b>latency</b>${t.before.latency_ms} → ${t.after.latency_ms} ms</div><div><b>error rate</b>${t.before.error_rate} → ${t.after.error_rate}%</div><div><b>db cpu</b>${t.before.db_cpu} → ${t.after.db_cpu}%</div><div><b>connections</b>${t.before.conn_used}/${t.before.pool_max} → ${t.after.conn_used}/${t.after.pool_max}</div></div>`;
+ if(o.closed){$('H').classList.remove('hidden');const r=o.retained;$('Hb').innerHTML=`<div class="banner learn">✓ Outcome retained in ${r.backend==='hindsight'?'Hindsight':'DEV FALLBACK — NOT HINDSIGHT'}. Next similar incident will see it.</div>${r.warning?`<div class="banner dev">${esc(r.warning)}</div>`:''}<div class="mut">${esc(r.retained_text)}</div>`;$('Fnote').textContent='Incident closed.'}
+ else{$('H').classList.add('hidden');$('Fnote').innerHTML='Incident still active. <button id="again">Re-analyze with what just happened</button>';$('again').onclick=analyze}
+ return o}
+$('approve').onclick=()=>decide('approve').catch(e=>alert(e.message));$('reject').onclick=()=>decide('reject').catch(e=>alert(e.message));
+$('hero').onclick=async()=>{try{await load('INC-201');for(let i=0;i<3;i++){const o=await decide('approve');if(o.closed)break;await new Promise(r=>setTimeout(r,1200));await analyze();await new Promise(r=>setTimeout(r,1200));}
+ await new Promise(r=>setTimeout(r,2500));await load('INC-202');}catch(e){alert(e.message)}};
+init();
+</script></body></html>
